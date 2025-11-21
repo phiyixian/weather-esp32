@@ -1,0 +1,140 @@
+#define LIGHT_SENSOR 4   // Use ADC pin on ESP32 or analog pin on Arduino
+#define BLYNK_TEMPLATE_ID "TMPL6uEIXbG_v"
+#define BLYNK_TEMPLATE_NAME "weather app"
+#define BLYNK_AUTH_TOKEN "1NLOJJExkXfb5Y-1mAGYaycEJhLvX0kH"
+
+#include <LiquidCrystal_I2C.h>
+#include <DHT11.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <HTTPClient.h>
+#include <BlynkSimpleEsp32.h>
+#include <Arduino_JSON.h>
+#include <ArduinoJson.h>
+
+char ssid[] = "iloveesp32";
+char pass[] = "ilovetempeh";
+
+int lcdColumns = 16;
+int lcdRows = 2;
+
+BlynkTimer timer;
+DHT11 dht11(5);
+LiquidCrystal_I2C lcd(0x27, lcdColumns, lcdRows);
+
+void checkWiFi() {
+  if(WiFi.status() != WL_CONNECTED){
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi lost...");
+    lcd.setCursor(0, 1);
+    lcd.print("Reconnecting");
+  }
+
+  WiFi.begin(ssid, pass);
+  int retry = 0;
+  while(WiFi.status() != WL_CONNECTED && retry < 20){
+    delay(500);
+    retry++;
+  }
+}
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+
+  WiFi.begin(ssid, pass);
+  
+  lcd.setCursor(0, 0);
+  lcd.print("Connecting to WiFi");
+
+  int attempts = 0;
+  while(WiFi.status() != WL_CONNECTED && attempts < 20){
+    delay(500);
+    attempts++;
+  }
+
+  if(WiFi.status() == WL_CONNECTED){
+    lcd.clear();
+    lcd.print("WiFi OK");
+  } else {
+    lcd.clear();
+    lcd.print("WiFi Failed");
+  }
+
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+  timer.setInterval(600000L, getOpenWeather);
+
+  // Only for ESP32 (remove if using Arduino)
+  analogSetAttenuation(ADC_11db);
+}
+
+void getOpenWeather(){
+  HTTPClient http;
+
+  String url = "https://api.openweathermap.org/data/2.5/weather?lat=5.36&lon=100.32&appid=a9a538ff2db19aa3ef9ef56e99da131c&units=metric";
+  http.begin(url);
+
+  int code = http.GET();
+
+  if(code == 200){
+    String payload = http.getString();
+    Serial.println(payload);
+
+    DynamicJsonDocument doc(2048);
+    deserializeJson(doc, payload);
+
+    float outdoorTemp = doc["main"]["temp"];
+    float outdoorHumidity = doc["main"]["humidity"];
+    int cloud = doc["clouds"]["all"];
+
+    Blynk.virtualWrite(V0, outdoorTemp);
+    Blynk.virtualWrite(V1, outdoorHumidity);
+    Blynk.virtualWrite(V2, cloud);
+  }
+
+  http.end();
+}
+void loop() {
+  checkWiFi();
+  Blynk.run();
+  timer.run();
+
+  int lightRaw = analogRead(LIGHT_SENSOR);
+  int lightPercent = map(lightRaw, 0, 4095, 0, 100);  // ESP32
+  // int lightPercent = map(lightRaw, 0, 1023, 0, 100); // Arduino UNO
+
+  int temperature = dht11.readTemperature();
+  int humidity = dht11.readHumidity();
+
+  // Optional: handle DHT11 error
+  if (temperature == -1 || humidity == -1) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("DHT11 Error!");
+    delay(1000);
+    return;
+  }
+
+  // -------- Line 1 --------
+  lcd.setCursor(0, 0);
+  lcd.print("Temp:");
+  lcd.print(temperature);
+  lcd.print("C ");
+  Blynk.virtualWrite(V3, temperature);
+
+
+  // ------- Line 2 --------
+  lcd.setCursor(0, 1);
+  lcd.print("Hum:");
+  lcd.print(humidity);
+  lcd.print("% ");
+  Blynk.virtualWrite(V4, humidity);
+
+  lcd.print("L:");
+  lcd.print(lightPercent);
+  Blynk.virtualWrite(V5, lightPercent);
+
+
+  delay(1000);
+}
