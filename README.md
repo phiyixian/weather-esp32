@@ -160,9 +160,3 @@ Local sensor values update every **1 second**.
 This project is open-source and free to modify.
 
 ---
-
-If you want, I can also generate:
-✅ A GitHub repo folder structure
-✅ A circuit diagram image
-✅ A Blynk dashboard screenshot layout
-Just tell me!
